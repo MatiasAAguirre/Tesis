@@ -4,13 +4,13 @@
 
 void B_Asdex(double r,double z,double *B,double *s_flux);
 void magnetic_field(double *B, double *E, double r, double q, double z, double *s_flux);
-void centro_giro(double *r, double *rg, double *vi, double *B);
-void cond_i (double *r, double *v);
+double centro_giro2(double *r, double *rg, double *v, double t);
+void cond_i (double *r, double *v, double *rgc, double *vpar);
 void perturbacion(double *r, double t, double *b1);
 void RHS_cil(double time, double *u, double *dr);
 double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs);
-void integrador(double *r, double *v);
-void PROC(double *r, double *v, double *rp, double *vp, double *tp);
+void integrador(double *r, double *v, double *rgc, double *vpar);
+void PROC(double *r, double *v, double *rgc, double *vpar, double *rp, double *vp, double *rgcp, double *vparp, double *tp);
 
 void B_Asdex(double rp,double zp,double *B,double *s_flux) {
   double T_a=15.2329;
@@ -82,12 +82,12 @@ void magnetic_field(double *B, double *E, double r, double q, double z, double *
    return;
 }
 
-void centro_giro(double *r, double *rg, double *vi, double *B) {
+double centro_giro2(double *r, double *rg, double *v, double t) {
   int i;
-	double vpmod, rho, Bmod;
+	double vparmod, vpmod, rho, Bmod;
 	double vp[3];		// Velocidad perpendicular.
 	double e[3];			// Vector unitario perpendicular a v y B.
-	double E[3];
+	double B[3], E[3], dB[3];
   double psi[1];
 
 	rg[0] = r[0];
@@ -95,25 +95,35 @@ void centro_giro(double *r, double *rg, double *vi, double *B) {
 	rg[2] = r[2];
 
   psi[0] = 0.0;
-	magnetic_field(B, E, rg[0], rg[1], rg[2], psi);
+	magnetic_field(B, E, r[0], r[1], r[2], psi);
 
-	e[0] = vi[1]*B[2] - vi[2]*B[1];
-	e[1] = vi[2]*B[0] - vi[0]*B[2];
-	e[2] = vi[0]*B[1] - vi[1]*B[0];
-
-	Bmod = sqrt(B[0]*B[0] + B[1]*B[1] + B[2]*B[2]);
+  perturbacion(r, t, dB);
 
   for (i=0; i<3; i++) {
-    vp[i] = e[i]/Bmod;
+    B[i]=B[i]+dB[i];
   }
 
-	vpmod = sqrt(vp[0]*vp[0] + vp[1]*vp[1] + vp[2]*vp[2]);
+  Bmod = sqrt(B[0]*B[0]+B[1]*B[1]+B[2]*B[2]);
 
-	rho = gam*vpmod/Bmod;
+  for(i=0;i<3;i++) {
+		vp[i] = v[i]*B[i]/Bmod;			// Vel paralela.
+  }
 
-	// Devuelve la posicion de la particula.
-	if (rho < 1.0E-8) {
-    return;
+  vparmod = sqrt(vp[0]*vp[0]+vp[1]*vp[1]+vp[2]*vp[2]);
+
+	for(i=0;i<3;i++) {
+		vp[i] = v[i] - vp[i];			// Vel perpendicular
+  }
+
+  vpmod = sqrt(vp[0]*vp[0] + vp[1]*vp[1] + vp[2]*vp[2]);
+  rho = gam*vpmod/Bmod;
+
+	e[0] = v[1]*B[2] - v[2]*B[1];
+	e[1] = v[2]*B[0] - v[0]*B[2];
+	e[2] = v[0]*B[1] - v[1]*B[0];
+
+  if (rho < 1.0E-8) {
+    return 0; //Devuelve la posición de la partícula.
   }
 
 	for(i=0;i<3;i++) {
@@ -125,31 +135,31 @@ void centro_giro(double *r, double *rg, double *vi, double *B) {
     rg[i] = r[i] + rho*e[i]; //Está con un + porque es v x B en vez de B x v.
   }
 
-  return;
+  return vparmod;
 }
 
-void cond_i(double *r, double *v) {
+void cond_i(double *r, double *v, double *rgc, double *vpar) {
   int i;
   double rr0, rq0, rz0, vr0, vq0, vz0, vper2, Bmod, amu;
-	double v0[3], r0[3], rg0[3], B[3];
+	double v0[3], r0[3], rg0[3];
 
 	/* ------ Particula Pasante ------ */
-	// rr0 = 4.022350;
-	// rq0 = 196.003;
-	// rz0 = 0.623175;
-  //
-	// vr0 = 0.075035;
-	// vq0 = 0.64219;
-	// vz0 = 0.762512;
+	rr0 = 4.022350;
+	rq0 = 196.003;
+	rz0 = 0.623175;
+
+	vr0 = 0.075035;
+	vq0 = 0.64219;
+	vz0 = 0.762512;
 
 	/* ------ Particula Atrapada ------ */
-	rr0 = 3.41970;
-	rq0 = 21.2890;
-	rz0 = -0.781325;
-
-	vr0 = 0.0181466;
-	vq0 = 0.0394052;
-	vz0 = 0.998925;
+	// rr0 = 3.41970;
+	// rq0 = 21.2890;
+	// rz0 = -0.781325;
+  //
+	// vr0 = 0.0181466;
+	// vq0 = 0.0394052;
+	// vz0 = 0.998925;
 
 	r0[0] = rr0;
 	r0[1] = rq0;
@@ -159,21 +169,14 @@ void cond_i(double *r, double *v) {
 	v0[1] = vq0;
 	v0[2] = vz0;
 
-	//centro_giro(r0, rg0, v0, B); Se supone que esto ya no va, igual preguntar.
+	vpar[0] = centro_giro2(r0, rg0, v0, 0.0); //Se supone que esto ya no va, igual preguntar.
+
 
   for (i=0; i<3; i++) {
     r[i] = r0[i]; //Según lo de Hugo, para r debería sumar la relación de aspecto 171.0/50.0, VER.
     v[i] = v0[i];
+    rgc[i] = rg0[i];
   }
-
-  //Acá saqué todo lo que creo es de CG.
-	// Bmod = sqrt(B[0]*B[0]+B[1]*B[1]+B[2]*B[2]);
-	// vpar[0] = (v0[0]*B[0]+v0[1]*B[1]+v0[2]*B[2])/Bmod;
-  //
-	// vper2 = 1.0 - vpar[0]*vpar[0];
-	// amu = (gam*vper2)/(2.0*Bmod);
-  //
-  // return amu;
 
   return;
 }
@@ -225,28 +228,24 @@ void perturbacion(double *r, double t, double *b1) {
   else {
 
     //Esta perte está en lo de Hugo, lo saco para ver si se me perturba.
-    // if(rp<rp0 || rp>(-rp0) || zp<zp0 || zp>(2*zp0))
-    //   {
-    //     ii = 0;
-    //     jj = 0;
-    //     qi = 0.0;
-    //     pi = 0.0;
-    //   }
-    //
-    //   else {
-    //     ii = (int)((rp-rp0)/hr);
-    //     jj = (int)((zp-zp0)/hz);
-    //     pi = rp/hr - (float)ii - rp0/hr;
-    //     qi = zp/hz - (float)jj - zp0/hz;
-    //   }
+    if(rp<rp0 || rp>2*rp0 || zp<zp0 || zp>-zp0) //Modificar los rp1 y zp1!!!!
+      {
+        ii = 0;
+        jj = 0;
+        qi = 0.0;
+        pi = 0.0;
+      }
+
+      else {
+        ii = (int)((rp-rp0)/hr);
+        jj = (int)((zp-zp0)/hz);
+        pi = rp/hr - (float)ii - rp0/hr;
+        qi = zp/hz - (float)jj - zp0/hz;
+      }
 
     double phi = nmode * r[1] + omega * t;
     double cphi = cos(phi), sphi = sin(phi);
 
-    ii = (int)((rp-rp0)/hr);
-    jj = (int)((zp-zp0)/hz);
-    pi = rp/hr - (float)ii - rp0/hr;
-    qi = zp/hz - (float)jj - zp0/hz;
     kk = ii+jj*nr;
 
     up = 1.0 - pi;
@@ -347,22 +346,23 @@ double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
   return t;
 }
 
-void integrador(double *r, double *v) {
+void integrador(double *r, double *v, double *rgc, double *vpar) {
   int i, j;
   double t;
-  double rs[3], ri[3], vs[3], vi[3];
+  double rs[3], ri[3], vs[3], vi[3], rg[3];
 
   printf("Integrador con nstep = %d.\n", nstep);
 
   for (i=0; i<3; i++) {
     ri[i] = r[i];
     vi[i] = v[i];
+    rg[i] = 0.0;
   }
 
   for (i=1; i<nstep; i++) {
     t = i * dt;
 
-    t = RK46_NL(t, ri, vi, rs, vs); //Creo que este t está de más, pero lo dejo porque así funciona.
+    RK46_NL(t, ri, vi, rs, vs); //Saqué el t = RK46_NL() que estaba antes, veamos si sigue funcionando.
 
     r[3*i] = rs[0];
     r[3*i+1] = rs[1];
@@ -370,6 +370,11 @@ void integrador(double *r, double *v) {
     v[3*i] = vs[0];
     v[3*i+1] = vs[1];
     v[3*i+2] = vs[2];
+
+    vpar[i] = centro_giro2(rs, rg, vs, t);
+    for (j=0; j<3; j++) {
+      rgc[3*i+j] = rg[j];
+    }
 
     for (j=0; j<3; j++) {
       ri[j] = rs[j];
@@ -381,7 +386,7 @@ void integrador(double *r, double *v) {
   return;
 }
 
-void PROC(double *r, double *v, double *rp, double *vp, double *tp) {
+void PROC(double *r, double *v, double *rgc, double *vpar, double *rp, double *vp, double *rgcp, double *vparp, double *tp) {
   int i,j,k,jstep=((float)nstep)/((float)nprint);
   j = 0;
 
@@ -397,6 +402,10 @@ void PROC(double *r, double *v, double *rp, double *vp, double *tp) {
       vp[3*j] = v[3*i];
       vp[3*j+1] = v[3*i+1];
       vp[3*j+2] = v[3*i+2];
+      rgcp[3*j] = rgc[3*i];
+      rgcp[3*j+1] = *(rgc+3*i+1);
+      rgcp[3*j+2] = rgc[3*i+2];
+      vparp[j] = vpar[i];
       j = j + 1;
     }
   }
