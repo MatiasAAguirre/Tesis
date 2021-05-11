@@ -2,19 +2,19 @@
 #include <stdlib.h>
 #include <math.h>
 
-void cuentaD(double vpar0);
+void cuentaD(double vpar0, double gam);
 void B_Asdex(double r,double z,double *B,double *s_flux);
 void magnetic_field(double *B, double *E, double r, double q, double z, double *s_flux);
-void centro_giro(double *r, double *rg, double *vi, double *B);
-double cond_i (double *rgc, double *vpar);
+void centro_giro(double *r, double *rg, double *vi, double *B, double gam);
+double cond_i (double *rgc, double *vpar, double gam);
 void perturbacion(double *rgc, double t, double *b1, double *e1, double *db1);
 void campo(double *rgc, double t, double *Ba, double *Bmod, double *E, double *dBm, double *dbv);
-double RHS_cil(int j, double time, double amu, double *rgce, double *drgc, double vpar);
-double RK46_NL(double amu, double t, double *rgc, double *vpari, double *rgcs);
-void integrador(double amu, double *rgc, double *vpar);
+double RHS_cil(int j, double time, double amu, double *rgce, double *drgc, double vpar, double gam);
+double RK46_NL(double amu, double t, double *rgc, double *vpari, double *rgcs, double gam);
+void integrador(double amu, double *rgc, double *vpar, double gam);
 void PROC(double amu, double *rgc, double *vpar, double *rgcp, double *vparp, double *tp);
 
-void cuentaD(double vpar0) {
+void cuentaD(double vpar0, double gam) {
   double E, m, q, ta;
   double Omega, a, B0, frec, R0, Rl;
   double Gamma, tsim;
@@ -109,7 +109,7 @@ void magnetic_field(double *B, double *E, double r, double q, double z, double *
    return;
 }
 
-void centro_giro(double *r, double *rg, double *vi, double *B) {
+void centro_giro(double *r, double *rg, double *vi, double *B, double gam) {
   int i;
 	double vpmod, rho, Bmod;
 	double vp[3];		// Velocidad perpendicular.
@@ -155,7 +155,7 @@ void centro_giro(double *r, double *rg, double *vi, double *B) {
   return;
 }
 
-double cond_i(double *rgc, double *vpar) {
+double cond_i(double *rgc, double *vpar, double gam) {
   int i;
   double rr0, rq0, rz0, vr0, vq0, vz0, vper2, Bmod, amu;
 	double v0[3], r0[3], rg0[3], B[3];
@@ -186,7 +186,7 @@ double cond_i(double *rgc, double *vpar) {
 	v0[1] = vq0;
 	v0[2] = vz0;
 
-	centro_giro(r0, rg0, v0, B);
+	centro_giro(r0, rg0, v0, B, gam);
 
   for (i=0; i<3; i++) {
     rgc[i] = rg0[i];
@@ -444,7 +444,7 @@ void campo(double *rgc, double t, double *Ba, double *Bmodv, double *E, double *
   return;
 }
 
-double RHS_cil(int j, double time, double amu, double *rgce, double *drgc, double vpar) {
+double RHS_cil(int j, double time, double amu, double *rgce, double *drgc, double vpar, double gam) {
   int i;
   double Bmodv[1], bv[3], Ba[3], dBm[3], dbv[9], E[3], rgc[3];
   double Bmod, Bpars, dvpar;
@@ -480,7 +480,7 @@ double RHS_cil(int j, double time, double amu, double *rgce, double *drgc, doubl
 	return dvpar;
 }
 
-double RK46_NL(double amu, double t, double *rgc, double *vpari, double *rgcs) {
+double RK46_NL(double amu, double t, double *rgc, double *vpari, double *rgcs, double gam) {
   double u[28]; 	// velocidades y posiciones
   double w[28]; 	// vel./pos. intermedias
   double F[4];  // drgc
@@ -511,7 +511,7 @@ double RK46_NL(double amu, double t, double *rgc, double *vpari, double *rgcs) {
   for(i=0;i<6;i++) {
     tw = t + c[i] * dt; //Etapas
 
-    dvpar = RHS_cil(i, tw, amu, u, F, u[4*i+3]);
+    dvpar = RHS_cil(i, tw, amu, u, F, u[4*i+3], gam);
 
     for(j=0;j<3;j++) {	// variables (pos./vel.)
       w[4*i+j+4] = a[i]*w[4*i+j] + dt * F[j];
@@ -531,7 +531,7 @@ double RK46_NL(double amu, double t, double *rgc, double *vpari, double *rgcs) {
   return t;
 }
 
-void integrador(double amu, double *rgc, double *vpar) {
+void integrador(double amu, double *rgc, double *vpar, double gam) {
   int i, j;
   double t;
   double rgcs[3], rgci[3], vpari[1];
@@ -545,7 +545,7 @@ void integrador(double amu, double *rgc, double *vpar) {
 
   for (i=1; i<nstep; i++) {
     t = i * dt;
-    t = RK46_NL(amu, t, rgci, vpari, rgcs); //Creo que este t está de más, pero lo dejo porque así funciona.
+    t = RK46_NL(amu, t, rgci, vpari, rgcs, gam); //Creo que este t está de más, pero lo dejo porque así funciona.
 
     rgc[3*i] = rgcs[0];
     rgc[3*i+1] = rgcs[1];

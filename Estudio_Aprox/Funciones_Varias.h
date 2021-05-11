@@ -2,18 +2,18 @@
 #include <stdlib.h>
 #include <math.h>
 
-void cuentaD(double vpar0);
+void cuentaD(double vpar0, double gam);
 void B_Asdex(double r,double z,double *B,double *s_flux);
 void magnetic_field(double *B, double *E, double r, double q, double z, double *s_flux);
-double centro_giro2(double *r, double *rg, double *v, double t);
-void cond_i (double *r, double *v, double *rgc, double *vpar);
+double centro_giro2(double *r, double *rg, double *v, double t, double gam);
+void cond_i (double *r, double *v, double *rgc, double *vpar, double gam);
 void perturbacion(double *r, double t, double *b1);
-void RHS_cil(double time, double *u, double *dr);
-double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs);
-void integrador(double *r, double *v, double *rgc, double *vpar);
+void RHS_cil(double time, double *u, double *dr, double gam);
+double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs, double gam);
+void integrador(double *r, double *v, double *rgc, double *vpar, double gam);
 void PROC(double *r, double *v, double *rgc, double *vpar, double *rp, double *vp, double *rgcp, double *vparp, double *tp);
 
-void cuentaD(double vpar0) {
+void cuentaD(double vpar0, double gam) {
   double E, m, q, ta;
   double Omega, a, B0, frec, R0, Rl;
   double Gamma, tsim;
@@ -112,7 +112,7 @@ void magnetic_field(double *B, double *E, double r, double q, double z, double *
    return;
 }
 
-double centro_giro2(double *r, double *rg, double *v, double t) {
+double centro_giro2(double *r, double *rg, double *v, double t, double gam) {
   int i;
 	double vparmod, vpmod, rho, Bmod;
 	double vp[3];		// Velocidad perpendicular.
@@ -168,7 +168,7 @@ double centro_giro2(double *r, double *rg, double *v, double t) {
   return vparmod;
 }
 
-void cond_i(double *r, double *v, double *rgc, double *vpar) {
+void cond_i(double *r, double *v, double *rgc, double *vpar, double gam) {
   int i;
   double rr0, rq0, rz0, vr0, vq0, vz0, vper2, Bmod, amu;
 	double v0[3], r0[3], rg0[3];
@@ -199,7 +199,7 @@ void cond_i(double *r, double *v, double *rgc, double *vpar) {
 	v0[1] = vq0;
 	v0[2] = vz0;
 
-	vpar[0] = centro_giro2(r0, rg0, v0, 0.0); //Se supone que esto ya no va, igual preguntar.
+	vpar[0] = centro_giro2(r0, rg0, v0, 0.0, gam); //Se supone que esto ya no va, igual preguntar.
 
 
   for (i=0; i<3; i++) {
@@ -227,10 +227,10 @@ void perturbacion(double *r, double t, double *b1) {
     for (i=0; i<nr; i++) {
       for (j=0; j<nr; j++) {
         if(fscanf(Pert_Campo_Mag, "%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n", &aux, &aux, &b1ra[i*nr+j], &b1rb[i*nr+j], &b1za[i*nr+j], &b1zb[i*nr+j]) == 6) {
-          cc++;
+          cc++; //Contador elementos correctamente leídos.
         }
         else{
-          ci++;
+          ci++; //Contador elementos incorrectamente leídos.
           printf("No se leyó bien el archivo de perturbación %d veces para la posición %d.\n", ci, i*nr+j);
           break;
         }
@@ -240,7 +240,7 @@ void perturbacion(double *r, double t, double *b1) {
     printf("\n");
     printf("Se leyeron %d lineas correctamente del archivo de perturbación.\n", cc);
     printf("\n");
-
+    
     for(i=0; i<160801; i++) {
       b1ra[i] = bscale*b1ra[i];
       b1rb[i] = bscale*b1rb[i];
@@ -291,7 +291,7 @@ void perturbacion(double *r, double t, double *b1) {
   return;
 }
 
-void RHS_cil(double time, double *u, double *F) {
+void RHS_cil(double time, double *u, double *F, double gam) {
   int i;
   double Ba[3], dB[3], E[3], r[3];
   double s_flux[1];
@@ -326,7 +326,7 @@ void RHS_cil(double time, double *u, double *F) {
 	return;
 }
 
-double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
+double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs, double gam) {
   double u[6]; 	// velocidades y posiciones
   double w[6]; 	// vel./pos. intermedias
   double F[6];  // dr y dv
@@ -359,7 +359,7 @@ double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
   for(i=0;i<6;i++) {
     tw = t + c[i] * dt; //Etapas
 
-    RHS_cil(tw, u, F);
+    RHS_cil(tw, u, F, gam);
 
   for(j=0;j<6;j++) {	// variables (pos./vel.)
       w[j] = a[i]*w[j] + dt * F[j];
@@ -378,7 +378,7 @@ double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
   return t;
 }
 
-void integrador(double *r, double *v, double *rgc, double *vpar) {
+void integrador(double *r, double *v, double *rgc, double *vpar, double gam) {
   int i, j;
   double t;
   double rs[3], ri[3], vs[3], vi[3], rg[3];
@@ -394,7 +394,7 @@ void integrador(double *r, double *v, double *rgc, double *vpar) {
   for (i=1; i<nstep; i++) {
     t = i * dt;
 
-    RK46_NL(t, ri, vi, rs, vs); //Saqué el t = RK46_NL() que estaba antes, veamos si sigue funcionando.
+    RK46_NL(t, ri, vi, rs, vs, gam); //Saqué el t = RK46_NL() que estaba antes, veamos si sigue funcionando.
 
     r[3*i] = rs[0];
     r[3*i+1] = rs[1];
@@ -403,7 +403,7 @@ void integrador(double *r, double *v, double *rgc, double *vpar) {
     v[3*i+1] = vs[1];
     v[3*i+2] = vs[2];
 
-    vpar[i] = centro_giro2(rs, rg, vs, t);
+    vpar[i] = centro_giro2(rs, rg, vs, t, gam);
     for (j=0; j<3; j++) {
       rgc[3*i+j] = rg[j];
     }
