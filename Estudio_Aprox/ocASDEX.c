@@ -9,7 +9,7 @@ int main(int argc, char const *argv[]) {
   int i, j;
   double B[3], s_flux[1], amu = 0.0, rr, zz;
   double *r, *v, *rgc, *vpar, *rp, *vp, *rgcp, *vparp, *tp;
-  double t = 0, gam, r0[3], b1[3], e1[3], db1[8]; //No se si ahora db1 tiene 8 componentes, VER.
+  double t = 0, gam, r0[3], b1[3], e1[3], db1[8], pitch;
   char *frs, *frgcs;
   FILE *fr, *frgc, *flux;
 
@@ -37,28 +37,30 @@ int main(int argc, char const *argv[]) {
   s_flux[0]=0.0;
 
   for (i=0; i<nstep; i++) {
-    r[i]=0.0;
-    r[i+1]=0.0;
-    r[i+2]=0.0;
-    v[i]=0.0;
-    v[i+1]=0.0;
-    v[i+2]=0.0;
+    r[3*i]=0.0;
+    r[3*i+1]=0.0;
+    r[3*i+2]=0.0;
+    v[3*i]=0.0;
+    v[3*i+1]=0.0;
+    v[3*i+2]=0.0;
   }
   for (i=0; i<nprint; i++) {
-    rp[i]=0.0;
-    rp[i+1]=0.0;
-    rp[i+2]=0.0;
-    rgc[i]=0.0;
-    rgc[i+1]=0.0;
-    rgc[i+2]=0.0;
-    vp[i]=0.0;
-    vp[i+1]=0.0;
-    vp[i+2]=0.0;
+    rp[3*i]=0.0;
+    rp[3*i+1]=0.0;
+    rp[3*i+2]=0.0;
+    rgc[3*i]=0.0;
+    rgc[3*i+1]=0.0;
+    rgc[3*i+2]=0.0;
+    vp[3*i]=0.0;
+    vp[3*i+1]=0.0;
+    vp[3*i+2]=0.0;
     vpar[i]=0.0;
   }
 
   for (j=0; j<11; j++) {
     gam = 0.00327451 + 0.08*j/10; //Recorre los valores gam = [0.003;0.083]
+
+    pitch = 0;
 
     //RECORDAR CAMBIAR EL DIRECTORIO DE DESTINO DEPENDIENDO DE QUE ESTOY HACIENDO.
     //Caso sin perturbar:
@@ -79,12 +81,14 @@ int main(int argc, char const *argv[]) {
 
     cond_i(r, v, rgc, vpar, gam); //CUIDADO, ahora no tengo el amu definido.
 
-    cuentaD(vpar[0], gam);
-
     printf("ri = %.6f, qi = %.6f, zi = %.6f, vri = %.6f, vqi = %.6f, vzi = %.6f y gam = %.3f.\n", r[0], r[1], r[2], v[0], v[1], v[2], gam);
     printf("\n");
 
     integrador(r, v, rgc, vpar, gam);
+    for (i=0; i<nstep; i++) {
+      pitch = pitch + vpar[i];
+    }
+    printf("Valor medio pitch = %0.2f\n", pitch/nstep);
     PROC(r, v, rgc, vpar, rp, vp, rgcp, vparp, tp);
 
     for (i=0; i<nprint; i++) {

@@ -12,7 +12,7 @@ void cuentaD(double vpar) {
 
   B0=2.5; // Tesla
   R0=1.71, // radio mayor en metros
-  E=70.e3*1.602e-19;    // 8keV Energy
+  E=70.e3*1.602e-19;    // 70keV en J Energy
   //E=3.5e6*1.6022e-19;    // 3.5MeV Energy
   //m=58.7*1.66e-27;    // 58.7 u Mass Ni
   m=2.0*1.6726e-27;           // D

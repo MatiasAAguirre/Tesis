@@ -2,19 +2,19 @@
 #include <stdlib.h>
 #include <math.h>
 
-void cuentaD(double vpar0);
+void cuentaD(double vper2, double Bmod);
 void B_Asdex(double r,double z,double *B,double *s_flux);
 void magnetic_field(double *B, double *E, double r, double q, double z, double *s_flux);
 void centro_giro(double *r, double *rg, double *vi, double *B);
 double cond_i (double *rgc, double *vpar);
 void perturbacion(double *rgc, double t, double *b1, double *e1, double *db1);
-void campo(double *rgc, double t, double *Ba, double *Bmod, double *E, double *dBm, double *dbv);
-double RHS_cil(int j, double time, double amu, double *rgce, double *drgc, double vpar);
+double campo(double *rgc, double t, double *Ba, double *Bmod, double *E, double *dBm, double *dbv);
+double RHS_cil(int j, double time, double amu, double *rgce, double *F, double vpar);
 double RK46_NL(double amu, double t, double *rgc, double *vpari, double *rgcs);
-void integrador(double amu, double *rgc, double *vpar);
-void PROC(double amu, double *rgc, double *vpar, double *rgcp, double *vparp, double *tp);
+int integrador(double amu, double *rgc, double *vpar);
+void PROC(double amu, int nstepf, double *rgc, double *vpar, double *rgcp, double *vparp, double *tp);
 
-void cuentaD(double vpar0) {
+void cuentaD(double vper2, double Bmod) {
   double E, m, q, ta;
   double Omega, a, B0, frec, R0, Rl;
   double Gamma, tsim;
@@ -28,7 +28,7 @@ void cuentaD(double vpar0) {
   ta = 1.0439E-8*2/B0;      // Período de Ciclotrón en segundos.
   frec = 5000; //frecuencia del modo 5kHz
   a = 0.5;              // Minor radius
-  Rl = sqrt(1-vpar0*vpar0)*a; //Radio de Larmor en metros.
+  Rl = a*gam*sqrt(vper2)/Bmod; //Radio de Larmor en metros.
   tsim = nstep*dt*ta;
 
   printf("------Datos Varios------\n");
@@ -178,6 +178,25 @@ double cond_i(double *rgc, double *vpar) {
 	// vq0 = 0.0394052;
 	// vz0 = 0.998925;
 
+  /* ------ Particula 167 ------ */
+	// rr0 = 4.015180;
+	// rq0 = 15.127500;
+	// rz0 = 0.811112;
+  //
+	// vr0 = 0.816373;
+	// vq0 = -0.053964;
+	// vz0 = 0.574868;
+
+  /* ------ Particula 64 ------ */
+	// rr0 = 3.642350;
+	// rq0 = 20.581100;
+	// rz0 = 1.178040;
+  //
+	// vr0 = 0.089354;
+	// vq0 = 0.325686;
+	// vz0 = 0.941076;
+
+
 	r0[0] = rr0;
 	r0[1] = rq0;
 	r0[2] = rz0;
@@ -196,6 +215,9 @@ double cond_i(double *rgc, double *vpar) {
 	vpar[0] = (v0[0]*B[0]+v0[1]*B[1]+v0[2]*B[2])/Bmod;
 
 	vper2 = 1.0 - vpar[0]*vpar[0];
+
+  cuentaD(vper2, Bmod);
+
 	amu = (gam*vper2)/(2.0*Bmod);
 
   return amu;
@@ -246,16 +268,27 @@ void perturbacion(double *rgc, double t, double *b1, double *e1, double *db1) {
   }
 
   else {
+
+    if(rp<rp0 || rp>2*rp0 || zp<zp0 || zp>-zp0) {
+        ii = 0;
+        jj = 0;
+        qi = 0.0;
+        pi = 0.0;
+      }
+
+      else {
+        ii = (int)((rp-rp0)/hr);
+        jj = (int)((zp-zp0)/hz);
+        pi = rp/hr - (float)ii - rp0/hr;
+        qi = zp/hz - (float)jj - zp0/hz;
+      }
+
     double phi = nmode * rgc[1] + omega * t;
     double cphi = cos(phi), sphi = sin(phi);
 
-    ii = (int)((rp-rp0)/hr);
-    jj = (int)((zp-zp0)/hz);
     kk = ii+jj*nr;
 
-    pi = rp/hr - (float)ii - rp0/hr;
     up = 1.0 - pi;
-    qi = zp/hz - (float)jj - zp0/hz;
     uq = 1.0 - qi;
 
     b1[0] = up*uq*(b1ra[kk]*cphi+b1rb[kk]*sphi) + pi*uq*(b1ra[kk+1]*cphi+b1rb[kk+1]*sphi) + qi*up*(b1ra[kk+nr]*cphi+b1rb[kk+nr]*sphi) + pi*qi*(b1ra[kk+nr+1]*cphi+b1rb[kk+nr+1]*sphi);
@@ -325,9 +358,9 @@ void perturbacion(double *rgc, double t, double *b1, double *e1, double *db1) {
   return;
 }
 
-void campo(double *rgc, double t, double *Ba, double *Bmodv, double *E, double *dBm, double *dbv) {
+double campo(double *rgc, double t, double *Ba, double *Bmodv, double *E, double *dBm, double *dbv) {
   int i;
-  double dBmdt, Bmod, ar, az;
+  double dBmdt, Bmod, ar, az, c=1;
   double B[3], s_flux[1], Bp[6], Bm[6], dB0[6], b1[3], e1[3], db1[8], b[3], dB[9];
 
   dBmdt = 0.0;
@@ -359,7 +392,7 @@ void campo(double *rgc, double t, double *Ba, double *Bmodv, double *E, double *
 
   if (s_flux[0]<0.01) {
     printf("Partícula perdida.\n");
-    exit(0); //Ver como terminar el programa con esto, no me deja o no entendí el error.
+    return c = 0;
   }
 
   ar = rgc[0] + dr;
@@ -441,18 +474,19 @@ void campo(double *rgc, double t, double *Ba, double *Bmodv, double *E, double *
   Ba[1] = b[1];
   Ba[2] = b[2];
 
-  return;
+  return c;
 }
 
-double RHS_cil(int j, double time, double amu, double *rgce, double *drgc, double vpar) {
+double RHS_cil(int j, double time, double amu, double *rgce, double *F, double vpar) {
   int i;
-  double Bmodv[1], bv[3], Ba[3], dBm[3], dbv[9], E[3], rgc[3];
-  double Bmod, Bpars, dvpar;
+  double Bmodv[1], bv[3], Ba[3], dBm[3], dbv[9], E[3], rgc[3], drgc[3];
+  double Bmod, Bpars, dvpar, c;
 
   for (i=0; i<3; i++) {
     bv[i] = 0.0;
     Ba[i] = 0.0;
     dBm[i] = 0.0;
+    drgc[i] = 0.0;
     E[i] = 0.0;
   }
   for (i=0; i<9; i++) {
@@ -464,7 +498,11 @@ double RHS_cil(int j, double time, double amu, double *rgce, double *drgc, doubl
     rgc[i] = rgce[4*j+i];
   }
 
-  campo(rgc, time, Ba, Bmodv, E, dBm, dbv);
+  c = campo(rgc, time, Ba, Bmodv, E, dBm, dbv);
+
+  if (!c){
+    return c;
+  }
 
   Bmod = Bmodv[0];
   bv[0] = Ba[0] / Bmod;
@@ -477,7 +515,12 @@ double RHS_cil(int j, double time, double amu, double *rgce, double *drgc, doubl
   drgc[1] = gam*(vpar*Ba[1]+gam*vpar*vpar*(dbv[4]-dbv[1])+E[2]*bv[0]-E[0]*bv[2]-vpar*(dbv[8]*bv[0]-dbv[6]*bv[2])+amu*(dBm[0]*bv[2]-dBm[2]*bv[0]))/(Bpars*rgc[0]);
   dvpar = ((Ba[0]+gam*vpar*(dbv[3]/rgc[0]-dbv[5]))*(E[0]-amu*dBm[0])+(Ba[1]+gam*vpar*(dbv[4]-dbv[1]))*(E[1]-amu*dBm[1]/rgc[0])+(Ba[2]+gam*vpar*(bv[1]/rgc[0]+dbv[0]-dbv[2]/rgc[0]))*(E[2]-amu*dBm[2]))/Bpars;
 
-	return dvpar;
+  F[0] = drgc[0];
+  F[1] = drgc[1];
+  F[2] = drgc[2];
+  F[3] = dvpar;
+
+	return c;
 }
 
 double RK46_NL(double amu, double t, double *rgc, double *vpari, double *rgcs) {
@@ -485,7 +528,7 @@ double RK46_NL(double amu, double t, double *rgc, double *vpari, double *rgcs) {
   double w[28]; 	// vel./pos. intermedias
   double F[4];  // drgc
   double a[6],b[6],c[6]; // Constantes del método integrador
-  double tw, dvpar;		// tiempo intermedio;
+  double tw, dvpar, cc;		// tw=tiempo intermedio;
   int i,j;
 
   for(i=0;i<4;i++) {
@@ -511,13 +554,17 @@ double RK46_NL(double amu, double t, double *rgc, double *vpari, double *rgcs) {
   for(i=0;i<6;i++) {
     tw = t + c[i] * dt; //Etapas
 
-    dvpar = RHS_cil(i, tw, amu, u, F, u[4*i+3]);
+    cc = RHS_cil(i, tw, amu, u, F, u[4*i+3]);
+
+    if (!cc){
+      return cc;
+    }
 
     for(j=0;j<3;j++) {	// variables (pos./vel.)
       w[4*i+j+4] = a[i]*w[4*i+j] + dt * F[j];
       u[4*i+j+4] = u[4*i+j] + b[i] * w[4*i+j+4];
     }
-    w[4*i+7] = a[i]*w[4*i+3] + dt * dvpar;
+    w[4*i+7] = a[i]*w[4*i+3] + dt * F[3];
     u[4*i+7] = u[4*i+3] + b[i] * w[4*i+7];
   }
 
@@ -528,12 +575,12 @@ double RK46_NL(double amu, double t, double *rgc, double *vpari, double *rgcs) {
   vpari[0] = u[27];
   t = t + dt;
 
-  return t;
+  return cc;
 }
 
-void integrador(double amu, double *rgc, double *vpar) {
-  int i, j;
-  double t;
+int integrador(double amu, double *rgc, double *vpar) {
+  int i, j, nstepf;
+  double t, c;
   double rgcs[3], rgci[3], vpari[1];
 
   printf("Integrador con nstep = %d.\n", nstep);
@@ -545,7 +592,12 @@ void integrador(double amu, double *rgc, double *vpar) {
 
   for (i=1; i<nstep; i++) {
     t = i * dt;
-    t = RK46_NL(amu, t, rgci, vpari, rgcs); //Creo que este t está de más, pero lo dejo porque así funciona.
+    c = RK46_NL(amu, t, rgci, vpari, rgcs); //Creo que este t está de más, pero lo dejo porque así funciona.
+
+    if (!c) {
+      nstepf = i;
+      return nstepf;
+    }
 
     rgc[3*i] = rgcs[0];
     rgc[3*i+1] = rgcs[1];
@@ -558,16 +610,16 @@ void integrador(double amu, double *rgc, double *vpar) {
   }
 
 
-  return;
+  return nstep;
 }
 
-void PROC(double amu, double *rgc, double *vpar, double *rgcp, double *vparp, double *tp) {
+void PROC(double amu, int nstepf, double *rgc, double *vpar, double *rgcp, double *vparp, double *tp) {
   int i,j,k,jstep=((float)nstep)/((float)nprint);
   j = 0;
 
   printf("PROC con jstep = %d.\n", jstep);
 
-  for (i=0; i<nstep; i++) {
+  for (i=0; i<nstepf; i++) {
     k = i%jstep;
     if (k == 0) {
       tp[j] = i*dt;

@@ -8,7 +8,7 @@
 int main(int argc, char const *argv[]) {
   int i, j;
   double B[3], s_flux[1], vpar[nstep], rgc[3*nstep], rgcp[3*nprint], vparp[nprint], tp[nprint], amu = 0.0, r, z;
-  double t = 0, gam, rgc0[3], b1[3], e1[3], db1[8];
+  double t = 0, gam, rgc0[3], b1[3], e1[3], db1[8], pitch;
   char *frgcs;
   FILE *frgc, *flux;
 
@@ -41,6 +41,8 @@ int main(int argc, char const *argv[]) {
   for (j=0; j<11; j++) {
     gam = 0.00327451 + 0.08*j/10;
 
+    pitch = 0;
+
     //RECORDAR CAMBIAR EL DIRECTORIO DE DESTINO DEPENDIENDO DE QUE ESTOY HACIENDO.
     sprintf(frgcs, "./Outputs/prog_rgc_P_gam=%.3f.out", gam);
 
@@ -48,13 +50,14 @@ int main(int argc, char const *argv[]) {
 
     amu = cond_i(rgc, vpar, gam);
 
-    printf("\n");
-    cuentaD(vpar[0], gam);
-
     printf("rgci = %.16f, qgci = %.16f, zgci = %.16f, vpari = %.16f y amu = %.16f.\n", rgc[0], rgc[1], rgc[2], vpar[0], amu);
     printf("\n");
 
     integrador(amu, rgc, vpar, gam);
+    for (i=0; i<nstep; i++) {
+      pitch = pitch + vpar[i];
+    }
+    printf("Valor medio pitch = %0.2f\n", pitch/nstep);
     PROC(amu, rgc, vpar, rgcp, vparp, tp);
 
     for (i=0; i<nprint; i++) {

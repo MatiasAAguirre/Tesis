@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <math.h>
 
-void cuentaD(double vpar0, double gam);
+void cuentaD(double vpmod, double Bmod, double gam);
 void B_Asdex(double r,double z,double *B,double *s_flux);
 void magnetic_field(double *B, double *E, double r, double q, double z, double *s_flux);
 double centro_giro2(double *r, double *rg, double *v, double t, double gam);
@@ -13,7 +13,7 @@ double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs, double 
 void integrador(double *r, double *v, double *rgc, double *vpar, double gam);
 void PROC(double *r, double *v, double *rgc, double *vpar, double *rp, double *vp, double *rgcp, double *vparp, double *tp);
 
-void cuentaD(double vpar0, double gam) {
+void cuentaD(double vpmod, double Bmod, double gam) {
   double E, m, q, ta;
   double Omega, a, B0, frec, R0, Rl;
   double Gamma, tsim;
@@ -27,15 +27,16 @@ void cuentaD(double vpar0, double gam) {
   ta = 1.0439E-8*2/B0;      // Período de Ciclotrón en segundos.
   frec = 5000; //frecuencia del modo 5kHz
   a = 0.5;              // Minor radius
-  Rl = sqrt(1-vpar0*vpar0)*a; //Radio de Larmor en metros.
+  Rl = a*gam*vpmod/Bmod; //Radio de Larmor en metros.
   tsim = nstep*dt*ta;
 
   printf("------Datos Varios------\n");
+  printf("%f.\n", 1/(Omega*180/3.1415));
   printf("Gamma = %f\n", gam);
   printf("Omega = %.2e rad/s\n", Omega);
   printf("Radio de Larmor = %0.1f cm\n", Rl*100);
   printf("Tiempo de simulacion  %.2f ms \n",tsim*1000);
-  printf("Cuantas vueltas da en un tiempo de simulacion = %.0f\n", tsim/ta);
+  printf("Cuantas vueltas da en un tiempo de simulacion = %.0f\n", tsim*Omega);
   printf("Cuanto tarda en dar una vuelta: %.1e ms \n", ta*1000);
   printf("------------------------\n");
 
@@ -114,7 +115,7 @@ void magnetic_field(double *B, double *E, double r, double q, double z, double *
 
 double centro_giro2(double *r, double *rg, double *v, double t, double gam) {
   int i;
-	double vparmod, vpmod, rho, Bmod;
+	double vpar, vpmod, rho, Bmod;
 	double vp[3];		// Velocidad perpendicular.
 	double e[3];			// Vector unitario perpendicular a v y B.
 	double B[3], E[3], dB[3];
@@ -136,10 +137,10 @@ double centro_giro2(double *r, double *rg, double *v, double t, double gam) {
   Bmod = sqrt(B[0]*B[0]+B[1]*B[1]+B[2]*B[2]);
 
   for(i=0;i<3;i++) {
-		vp[i] = v[i]*B[i]/Bmod;			// Vel paralela.
+		vp[i] = v[i]*B[i]/Bmod;
   }
 
-  vparmod = sqrt(vp[0]*vp[0]+vp[1]*vp[1]+vp[2]*vp[2]);
+  vpar = vp[0]+vp[1]+vp[2]; // Vel paralela.
 
 	for(i=0;i<3;i++) {
 		vp[i] = v[i] - vp[i];			// Vel perpendicular
@@ -165,7 +166,11 @@ double centro_giro2(double *r, double *rg, double *v, double t, double gam) {
     rg[i] = r[i] + rho*e[i]; //Está con un + porque es v x B en vez de B x v.
   }
 
-  return vparmod;
+  if (t == 0.0) {
+    cuentaD(vpmod, Bmod, gam);
+  }
+
+  return vpar;
 }
 
 void cond_i(double *r, double *v, double *rgc, double *vpar, double gam) {
@@ -240,7 +245,7 @@ void perturbacion(double *r, double t, double *b1) {
     printf("\n");
     printf("Se leyeron %d lineas correctamente del archivo de perturbación.\n", cc);
     printf("\n");
-    
+
     for(i=0; i<160801; i++) {
       b1ra[i] = bscale*b1ra[i];
       b1rb[i] = bscale*b1rb[i];

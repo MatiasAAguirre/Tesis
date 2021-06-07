@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <math.h>
 
-void cuentaD(double vpar0, double gam);
+void cuentaD(double vper2, double Bmod, double gam);
 void B_Asdex(double r,double z,double *B,double *s_flux);
 void magnetic_field(double *B, double *E, double r, double q, double z, double *s_flux);
 void centro_giro(double *r, double *rg, double *vi, double *B, double gam);
@@ -14,7 +14,7 @@ double RK46_NL(double amu, double t, double *rgc, double *vpari, double *rgcs, d
 void integrador(double amu, double *rgc, double *vpar, double gam);
 void PROC(double amu, double *rgc, double *vpar, double *rgcp, double *vparp, double *tp);
 
-void cuentaD(double vpar0, double gam) {
+void cuentaD(double vper2, double Bmod, double gam) {
   double E, m, q, ta;
   double Omega, a, B0, frec, R0, Rl;
   double Gamma, tsim;
@@ -28,7 +28,7 @@ void cuentaD(double vpar0, double gam) {
   ta = 1.0439E-8*2/B0;      // Período de Ciclotrón en segundos.
   frec = 5000; //frecuencia del modo 5kHz
   a = 0.5;              // Minor radius
-  Rl = sqrt(1-vpar0*vpar0)*a; //Radio de Larmor en metros.
+  Rl = a*gam*sqrt(vper2)/Bmod; //Radio de Larmor en metros.
   tsim = nstep*dt*ta;
 
   printf("------Datos Varios------\n");
@@ -197,6 +197,9 @@ double cond_i(double *rgc, double *vpar, double gam) {
 
 	vper2 = 1.0 - vpar[0]*vpar[0];
 	amu = (gam*vper2)/(2.0*Bmod);
+
+  printf("\n");
+  cuentaD(vper2, Bmod, gam);
 
   return amu;
 }

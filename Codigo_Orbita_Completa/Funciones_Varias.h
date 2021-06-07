@@ -2,18 +2,18 @@
 #include <stdlib.h>
 #include <math.h>
 
-void cuentaD(double vpar0);
+void cuentaD(double vpmod, double Bmod);
 void B_Asdex(double r,double z,double *B,double *s_flux);
 void magnetic_field(double *B, double *E, double r, double q, double z, double *s_flux);
 double centro_giro2(double *r, double *rg, double *v, double t);
 void cond_i (double *r, double *v, double *rgc, double *vpar);
 void perturbacion(double *r, double t, double *b1);
-void RHS_cil(double time, double *u, double *dr);
+double RHS_cil(double time, double *u, double *F);
 double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs);
-void integrador(double *r, double *v, double *rgc, double *vpar);
-void PROC(double *r, double *v, double *rgc, double *vpar, double *rp, double *vp, double *rgcp, double *vparp, double *tp);
+int integrador(double *r, double *v, double *rgc, double *vpar);
+void PROC(int nstepf, double *r, double *v, double *rgc, double *vpar, double *rp, double *vp, double *rgcp, double *vparp, double *tp);
 
-void cuentaD(double vpar0) {
+void cuentaD(double vpmod, double Bmod) {
   double E, m, q, ta;
   double Omega, a, B0, frec, R0, Rl;
   double Gamma, tsim;
@@ -27,7 +27,7 @@ void cuentaD(double vpar0) {
   ta = 1.0439E-8*2/B0;      // Período de Ciclotrón en segundos.
   frec = 5000; //frecuencia del modo 5kHz
   a = 0.5;              // Minor radius
-  Rl = sqrt(1-vpar0*vpar0)*a; //Radio de Larmor en metros.
+  Rl = a*gam*vpmod/Bmod; //Radio de Larmor en metros.
   tsim = nstep*dt*ta;
 
   printf("------Datos Varios------\n");
@@ -114,7 +114,7 @@ void magnetic_field(double *B, double *E, double r, double q, double z, double *
 
 double centro_giro2(double *r, double *rg, double *v, double t) {
   int i;
-	double vparmod, vpmod, rho, Bmod;
+	double vpar, vpmod, rho, Bmod;
 	double vp[3];		// Velocidad perpendicular.
 	double e[3];			// Vector unitario perpendicular a v y B.
 	double B[3], E[3], dB[3];
@@ -136,10 +136,10 @@ double centro_giro2(double *r, double *rg, double *v, double t) {
   Bmod = sqrt(B[0]*B[0]+B[1]*B[1]+B[2]*B[2]);
 
   for(i=0;i<3;i++) {
-		vp[i] = v[i]*B[i]/Bmod;			// Vel paralela.
+		vp[i] = v[i]*B[i]/Bmod;
   }
 
-  vparmod = sqrt(vp[0]*vp[0]+vp[1]*vp[1]+vp[2]*vp[2]);
+  vpar = vp[0]+vp[1]+vp[2]; // Vel paralela.
 
 	for(i=0;i<3;i++) {
 		vp[i] = v[i] - vp[i];			// Vel perpendicular
@@ -165,7 +165,11 @@ double centro_giro2(double *r, double *rg, double *v, double t) {
     rg[i] = r[i] + rho*e[i]; //Está con un + porque es v x B en vez de B x v.
   }
 
-  return vparmod;
+  if (t == 0.0) {
+    cuentaD(vpmod, Bmod);
+  }
+
+  return vpar;
 }
 
 void cond_i(double *r, double *v, double *rgc, double *vpar) {
@@ -190,6 +194,25 @@ void cond_i(double *r, double *v, double *rgc, double *vpar) {
 	// vr0 = 0.0181466;
 	// vq0 = 0.0394052;
 	// vz0 = 0.998925;
+
+  /* ------ Particula 167 ------ */
+	// rr0 = 4.015180;
+	// rq0 = 15.127500;
+	// rz0 = 0.811112;
+  //
+	// vr0 = 0.816373;
+	// vq0 = -0.053964;
+	// vz0 = 0.574868;
+
+  /* ------ Particula 64 ------ */
+	// rr0 = 3.642350;
+	// rq0 = 20.581100;
+	// rz0 = 1.178040;
+  //
+	// vr0 = 0.089354;
+	// vq0 = 0.325686;
+	// vz0 = 0.941076;
+
 
 	r0[0] = rr0;
 	r0[1] = rq0;
@@ -259,9 +282,7 @@ void perturbacion(double *r, double t, double *b1) {
 
   else {
 
-    //Esta perte está en lo de Hugo, lo saco para ver si se me perturba.
-    if(rp<rp0 || rp>2*rp0 || zp<zp0 || zp>-zp0) //Modificar los rp1 y zp1!!!!
-      {
+    if(rp<rp0 || rp>2*rp0 || zp<zp0 || zp>-zp0) {
         ii = 0;
         jj = 0;
         qi = 0.0;
@@ -291,10 +312,10 @@ void perturbacion(double *r, double t, double *b1) {
   return;
 }
 
-void RHS_cil(double time, double *u, double *F) {
+double RHS_cil(double time, double *u, double *F) {
   int i;
   double Ba[3], dB[3], E[3], r[3];
-  double s_flux[1];
+  double s_flux[1], c=1;
 
   for (i=0; i<3; i++) {
     Ba[i] = 0.0;
@@ -307,7 +328,7 @@ void RHS_cil(double time, double *u, double *F) {
 
   if (s_flux[0] < 0.01) {
     printf("Partícula perdida.\n");
-    exit(0);
+    return c = 0;
   }
 
   perturbacion(r, time, dB);
@@ -323,7 +344,7 @@ void RHS_cil(double time, double *u, double *F) {
   F[4] = -gam*u[3]*u[4]/u[0] + (u[5]*Ba[0]-u[3]*Ba[2]) + E[1]; //No pongo el q_Z, VER!!
   F[5] = u[3]*Ba[1] - u[4]*Ba[0] + E[2]; //No pongo el q_Z, VER!!
 
-	return;
+	return c;
 }
 
 double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
@@ -331,7 +352,7 @@ double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
   double w[6]; 	// vel./pos. intermedias
   double F[6];  // dr y dv
   double a[6],b[6],c[6]; // Constantes del método integrador
-  double tw, dvpar;		// tiempo intermedio;
+  double tw, dvpar, cc;		// tw=tiempo intermedio;
   int i,j;
 
   for(i=0;i<4;i++) {
@@ -359,12 +380,16 @@ double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
   for(i=0;i<6;i++) {
     tw = t + c[i] * dt; //Etapas
 
-    RHS_cil(tw, u, F);
+    cc = RHS_cil(tw, u, F);
 
-  for(j=0;j<6;j++) {	// variables (pos./vel.)
-      w[j] = a[i]*w[j] + dt * F[j];
-      u[j] = u[j] + b[i] * w[j];
+    if (!cc) {
+      return cc;
     }
+
+    for(j=0;j<6;j++) {	// variables (pos./vel.)
+        w[j] = a[i]*w[j] + dt * F[j];
+        u[j] = u[j] + b[i] * w[j];
+      }
   }
 
   // Actualizo Vel./pos. y tiempo:
@@ -375,11 +400,11 @@ double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
 
   t = t + dt;
 
-  return t;
+  return cc;
 }
 
-void integrador(double *r, double *v, double *rgc, double *vpar) {
-  int i, j;
+int integrador(double *r, double *v, double *rgc, double *vpar) {
+  int i, j, c, nstepf;
   double t;
   double rs[3], ri[3], vs[3], vi[3], rg[3];
 
@@ -394,7 +419,12 @@ void integrador(double *r, double *v, double *rgc, double *vpar) {
   for (i=1; i<nstep; i++) {
     t = i * dt;
 
-    RK46_NL(t, ri, vi, rs, vs); //Saqué el t = RK46_NL() que estaba antes, veamos si sigue funcionando.
+    c = RK46_NL(t, ri, vi, rs, vs);
+
+    if (!c) {
+      nstepf = i;
+      return nstepf;
+    }
 
     r[3*i] = rs[0];
     r[3*i+1] = rs[1];
@@ -415,16 +445,16 @@ void integrador(double *r, double *v, double *rgc, double *vpar) {
   }
 
 
-  return;
+  return nstep;
 }
 
-void PROC(double *r, double *v, double *rgc, double *vpar, double *rp, double *vp, double *rgcp, double *vparp, double *tp) {
+void PROC(int nstepf, double *r, double *v, double *rgc, double *vpar, double *rp, double *vp, double *rgcp, double *vparp, double *tp) {
   int i,j,k,jstep=((float)nstep)/((float)nprint);
   j = 0;
 
   printf("PROC con jstep = %d.\n", jstep);
 
-  for (i=0; i<nstep; i++) {
+  for (i=0; i<nstepf; i++) {
     k = i%jstep;
     if (k == 0) {
       tp[j] = i*dt;

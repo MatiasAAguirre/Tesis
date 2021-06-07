@@ -6,8 +6,8 @@ const int nrnz = 160801;
 const int npart = 1;
 const int nr = 401;
 const int nmode = -1;
-const int nstep = 640000;//Valor Predeterminado: 160000
-const int nprint = 6400;//Valor Predeterminado: 1600
+const int nstep = 800000;//Valor Predeterminado: 160000
+const int nprint = 8000;//Valor Predeterminado: 1600
 
 const double gam = 0.04327451;
 const double dr = 0.001;
