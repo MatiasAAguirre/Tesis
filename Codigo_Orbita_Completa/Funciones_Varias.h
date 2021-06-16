@@ -8,7 +8,7 @@ void magnetic_field(double *B, double *E, double r, double q, double z, double *
 double centro_giro2(double *r, double *rg, double *v, double t);
 void cond_i (double *r, double *v, double *rgc, double *vpar);
 void perturbacion(double *r, double t, double *b1);
-double RHS_cil(double time, double *u, double *F);
+double RHS_cil(int j, double time, double *u, double *F);
 double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs);
 int integrador(double *r, double *v, double *rgc, double *vpar);
 void PROC(int nstepf, double *r, double *v, double *rgc, double *vpar, double *rp, double *vp, double *rgcp, double *vparp, double *tp);
@@ -222,11 +222,11 @@ void cond_i(double *r, double *v, double *rgc, double *vpar) {
 	v0[1] = vq0;
 	v0[2] = vz0;
 
-	vpar[0] = centro_giro2(r0, rg0, v0, 0.0); //Se supone que esto ya no va, igual preguntar.
+	vpar[0] = centro_giro2(r0, rg0, v0, 0.0);
 
 
   for (i=0; i<3; i++) {
-    r[i] = r0[i]; //Según lo de Hugo, para r debería sumar la relación de aspecto 171.0/50.0, VER.
+    r[i] = r0[i];
     v[i] = v0[i];
     rgc[i] = rg0[i];
   }
@@ -312,19 +312,20 @@ void perturbacion(double *r, double t, double *b1) {
   return;
 }
 
-double RHS_cil(double time, double *u, double *F) {
+double RHS_cil(int j, double time, double *u, double *F) {
   int i;
   double Ba[3], dB[3], E[3], r[3];
   double s_flux[1], c=1;
 
   for (i=0; i<3; i++) {
     Ba[i] = 0.0;
+    dB[i] = 0.0;
     E[i] = 0.0;
-    r[i] = u[i];
+    r[i] = u[6*j+i];
   }
   s_flux[0] = 0.0;
 
-  magnetic_field(Ba, E, u[0], u[1], u[2], s_flux);
+  magnetic_field(Ba, E, u[6*j], u[6*j+1], u[6*j+2], s_flux);
 
   if (s_flux[0] < 0.01) {
     printf("Partícula perdida.\n");
@@ -334,30 +335,32 @@ double RHS_cil(double time, double *u, double *F) {
   perturbacion(r, time, dB);
 
   for (i=0; i<3; i++) {
-    Ba[i] = Ba[i] + dB[i];
+    Ba[i] += dB[i];
   }
 
-  F[0] = gam*u[3];
-  F[1] = gam*u[4]/u[0];
-  F[2] = gam*u[5];
-  F[3] = gam*u[4]*u[4]/u[0] + (u[4]*Ba[2]-u[5]*Ba[1]) + E[0]; //No pongo el q_Z, VER!! q_Z = 1.0 en lo de Hugo.
-  F[4] = -gam*u[3]*u[4]/u[0] + (u[5]*Ba[0]-u[3]*Ba[2]) + E[1]; //No pongo el q_Z, VER!!
-  F[5] = u[3]*Ba[1] - u[4]*Ba[0] + E[2]; //No pongo el q_Z, VER!!
+  F[0] = gam*u[6*j+3];
+  F[1] = gam*u[6*j+4]/u[6*j];
+  F[2] = gam*u[6*j+5];
+  F[3] = (gam*u[6*j+4]*u[6*j+4]/u[6*j]) + (u[6*j+4]*Ba[2]-u[6*j+5]*Ba[1]) + E[0]; //No pongo el q_Z, VER!! q_Z = 1.0 en lo de Hugo.
+  F[4] = -(gam*u[6*j+3]*u[6*j+4]/u[6*j]) + (u[6*j+5]*Ba[0]-u[6*j+3]*Ba[2]) + E[1]; //No pongo el q_Z, VER!!
+  F[5] = (u[6*j+3]*Ba[1]) - (u[6*j+4]*Ba[0]) + E[2]; //No pongo el q_Z, VER!!
 
 	return c;
 }
 
 double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
-  double u[6]; 	// velocidades y posiciones
-  double w[6]; 	// vel./pos. intermedias
+  double u[42]; 	// velocidades y posiciones
+  double w[42]; 	// vel./pos. intermedias
   double F[6];  // dr y dv
   double a[6],b[6],c[6]; // Constantes del método integrador
   double tw, dvpar, cc;		// tw=tiempo intermedio;
   int i,j;
 
-  for(i=0;i<4;i++) {
-    w[i] = 0.0;
+  for(i=0;i<6;i++) {
     F[i] = 0.0;
+  }
+  for(i=0;i<42;i++) {
+    w[i] = 0.0;
   }
 
 	// Valores de las constantes del método integrador
@@ -380,22 +383,22 @@ double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
   for(i=0;i<6;i++) {
     tw = t + c[i] * dt; //Etapas
 
-    cc = RHS_cil(tw, u, F);
+    cc = RHS_cil(i, tw, u, F);
 
     if (!cc) {
       return cc;
     }
 
     for(j=0;j<6;j++) {	// variables (pos./vel.)
-        w[j] = a[i]*w[j] + dt * F[j];
-        u[j] = u[j] + b[i] * w[j];
+        w[6*i+j+6] = a[i]*w[6*i+j] + dt * F[j];
+        u[6*i+j+6] = u[6*i+j] + b[i] * w[6*i+j+6];
       }
   }
 
   // Actualizo Vel./pos. y tiempo:
   for(i=0;i<3;i++) {
-    rs[i] = u[i];
-    vs[i] = u[i+3];
+    rs[i] = u[i+36];
+    vs[i] = u[i+39];
   }
 
   t = t + dt;

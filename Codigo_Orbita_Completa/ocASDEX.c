@@ -17,14 +17,14 @@ int main(int argc, char const *argv[]) {
 
   //RECORDAR CAMBIAR EL DIRECTORIO DE DESTINO DEPENDIENDO DE QUE ESTOY HACIENDO.
   //Caso sin perturbar:
-  // fr = fopen("./Outputs/r_P.out", "w");
-  // frgc = fopen("./Outputs/rgc_P.out", "w");
-  // flux = fopen("./Outputs/sup_flujo_P.out", "w");
+  fr = fopen("./Outputs/r_P_dt=1.out", "w");
+  frgc = fopen("./Outputs/rgc_P_dt=1.out", "w");
+  flux = fopen("./Outputs/sup_flujo_P.out", "w");
 
   //Caso Perturbado:
-  fr = fopen("./Outputs/Perturbado/r_perturbado_P_h=0.001.out", "w");
-  frgc = fopen("./Outputs/Perturbado/rgc_perturbado_P_h=0.001.out", "w");
-  flux = fopen("./Outputs/Perturbado/sup_flujo_perturbado_P.out", "w");
+  // fr = fopen("./Outputs/Perturbado/r_perturbado_PP_h=0.0001.out", "w");
+  // frgc = fopen("./Outputs/Perturbado/rgc_perturbado_PP_h=0.0001.out", "w");
+  // flux = fopen("./Outputs/Perturbado/sup_flujo_perturbado_P167.out", "w");
 
   r = (double *)malloc(3*nstep*sizeof(double));
   v = (double *)malloc(3*nstep*sizeof(double));

@@ -22,8 +22,8 @@ int main(int argc, char const *argv[]) {
   // flux = fopen("./Outputs/sup_flujo_P.out", "w");
 
   //Caso perturbado:
-  frgc = fopen("./Outputs/Perturbado/rgc_perturbado_P_h=0.001_dt=0.1.out", "w");
-  flux = fopen("./Outputs/Perturbado/sup_flujo_perturbado_P.out", "w");
+  frgc = fopen("./Outputs/Perturbado/rgc_perturbado_P167_h=0.0001_cw.out", "w");
+  flux = fopen("./Outputs/Perturbado/sup_flujo_perturbado_P167.out", "w");
 
   rgc = (double *)malloc(3*nstep*sizeof(double));
   vpar = (double *)malloc(nstep*sizeof(double));
