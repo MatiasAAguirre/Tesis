@@ -17,8 +17,8 @@ int main(int argc, char const *argv[]) {
 
   //RECORDAR CAMBIAR EL DIRECTORIO DE DESTINO DEPENDIENDO DE QUE ESTOY HACIENDO.
   //Caso sin perturbar:
-  fr = fopen("./Outputs/r_P_dt=1.out", "w");
-  frgc = fopen("./Outputs/rgc_P_dt=1.out", "w");
+  fr = fopen("./Outputs/r_P_dt=0.1.out", "w");
+  frgc = fopen("./Outputs/rgc_P_dt=0.1.out", "w");
   flux = fopen("./Outputs/sup_flujo_P.out", "w");
 
   //Caso Perturbado:
