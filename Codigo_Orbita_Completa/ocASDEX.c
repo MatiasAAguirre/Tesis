@@ -7,24 +7,23 @@
 #include "Funciones_Varias.h"
 
 int main(int argc, char const *argv[]) {
-  int i, j, nstepf, jstep=((float)nstep)/((float)nprint);
-  double B[3], s_flux[1], amu = 0.0, rr, zz;
-  double *r, *v, *vpar, *rgc, *rp, *vp, *rgcp, *vparp, *tp;
-  double t = 0, r0[3], b1[3], e1[3], db1[8]; //No se si ahora db1 tiene 8 componentes, VER.
+  int i, j, nstepf, jstep=((float)nstep)/((float)nprint), *d, *dp;
+  double B[3], s_flux[1], t[1], rr, zz, t0;
+  double *r, *v, *vpar, *mu, *rgc, *rp, *vp, *rgcp, *vparp, *mup, *tp;
   FILE *fr, *frgc, *flux;
 
   clock_t begin = clock();
 
   //RECORDAR CAMBIAR EL DIRECTORIO DE DESTINO DEPENDIENDO DE QUE ESTOY HACIENDO.
   //Caso sin perturbar:
-  fr = fopen("./Outputs/r_P_dt=0.1.out", "w");
-  frgc = fopen("./Outputs/rgc_P_dt=0.1.out", "w");
-  flux = fopen("./Outputs/sup_flujo_P.out", "w");
+  fr = fopen("./Outputs/r_PP_dt=0.2_1ms.out", "w"); //_h=0.0003_w=-3.75 _h=3_w=-8_cE_90keV _h=0.0003_w=-8
+  frgc = fopen("./Outputs/rgc_PP_dt=0.2_1ms.out", "w"); //_h=0.0003_w=-3.75 _h=3_w=-8_cE_90keV _h=0.0003_w=-8
+  flux = fopen("./Outputs/sup_flujo_A.out", "w");
 
   //Caso Perturbado:
-  // fr = fopen("./Outputs/Perturbado/r_perturbado_PP_h=0.0001.out", "w");
-  // frgc = fopen("./Outputs/Perturbado/rgc_perturbado_PP_h=0.0001.out", "w");
-  // flux = fopen("./Outputs/Perturbado/sup_flujo_perturbado_P167.out", "w");
+  // fr = fopen("./Outputs/Perturbado/r_perturbado_P40_dt=0.2_cwsE.out", "w");
+  // frgc = fopen("./Outputs/Perturbado/rgc_perturbado_P40_dt=0.2_cwsE.out", "w");
+  // flux = fopen("./Outputs/Perturbado/sup_flujo_perturbado_PP.out", "w");
 
   r = (double *)malloc(3*nstep*sizeof(double));
   v = (double *)malloc(3*nstep*sizeof(double));
@@ -32,18 +31,26 @@ int main(int argc, char const *argv[]) {
   rgc = (double *)malloc(3*nstep*sizeof(double));
   vpar = (double *)malloc(nstep*sizeof(double));
 
+  mu = (double *)malloc(nstep*sizeof(double));
+
+  d = (int *)malloc(nstep*sizeof(int));
+
   rp = (double *)malloc(3*nprint*sizeof(double));
   vp = (double *)malloc(3*nprint*sizeof(double));
 
   rgcp = (double *)malloc(3*nprint*sizeof(double));
   vparp = (double *)malloc(nprint*sizeof(double));
 
+  mup = (double *)malloc(nstep*sizeof(double));
+
+  dp = (int *)malloc(nprint*sizeof(int));
+
   tp = (double *)malloc(nprint*sizeof(double));
 
+  t[0] = 0.0;
 
   for (i=0; i<3; i++) {
     B[i]=0.0;
-    r0[i]=0.0;
   }
   s_flux[0]=0.0;
   for (i=0; i<nstep; i++) {
@@ -69,20 +76,24 @@ int main(int argc, char const *argv[]) {
     rgcp[i+1]=0.0;
     rgcp[i+2]=0.0;
     vparp[i]=0.0;
+    tp[i]=0.0;
+    dp[i]=0;
   }
 
-  cond_i(r, v, rgc, vpar); //CUIDADO, ahora no tengo el amu definido.
+  cond_i(t, r, v, rgc, vpar, mu);
 
-  printf("ri = %.6f, qi = %.6f, zi = %.6f, vri = %.6f, vqi = %.6f y vzi = %.6f.\n", r[0], r[1], r[2], v[0], v[1], v[2]);
+  printf("t0 = %.1f, ri = %.6f, qi = %.6f, zi = %.6f, vri = %.6f, vqi = %.6f y vzi = %.6f.\n", t[0], r[0], r[1], r[2], v[0], v[1], v[2]);
   printf("\n");
 
-  nstepf = integrador(r, v, rgc, vpar);
-  PROC(nstepf, r, v, rgc, vpar, rp, vp, rgcp, vparp, tp);
+  t0 = t[0];
+
+  nstepf = integrador(t, r, v, rgc, vpar, mu, d);
+  PROC(t0, nstepf, r, v, rgc, vpar, mu, d, rp, vp, rgcp, vparp, mup, tp, dp);
   printf("\n");
 
   for (i=0; i<(int)(nstepf/jstep); i++) {
     fprintf(fr, "%f %f %f %f %f %f %f\n", tp[i], rp[3*i], rp[3*i+1], rp[3*i+2], vp[3*i], vp[3*i+1], vp[3*i+2]);
-    fprintf(frgc, "%f %f %f %f %f\n", tp[i], rgcp[3*i], rgcp[3*i+1], rgcp[3*i+2], vparp[i]);
+    fprintf(frgc, "%f %f %f %f %f %f %d\n", tp[i], rgcp[3*i], rgcp[3*i+1], rgcp[3*i+2], vparp[i], mup[i], dp[i]);
   }
 
 

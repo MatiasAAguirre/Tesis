@@ -2,37 +2,41 @@
 #include <stdlib.h>
 #include <math.h>
 
-void cuentaD(double vpmod, double Bmod);
+void cuentaD(double vpmod, double vmod2, double Bmod);
 void B_Asdex(double r,double z,double *B,double *s_flux);
 void magnetic_field(double *B, double *E, double r, double q, double z, double *s_flux);
-double centro_giro2(double *r, double *rg, double *v, double t);
-void cond_i (double *r, double *v, double *rgc, double *vpar);
-void perturbacion(double *r, double t, double *b1);
-double RHS_cil(int j, double time, double *u, double *F);
-double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs);
-int integrador(double *r, double *v, double *rgc, double *vpar);
-void PROC(int nstepf, double *r, double *v, double *rgc, double *vpar, double *rp, double *vp, double *rgcp, double *vparp, double *tp);
+double centro_giro2(double *r, double *rg, double *v, double *mu, double t0, double t);
+void cond_i (double *t, double *r, double *v, double *rgc, double *vpar, double *mu);
+void perturbacion(double *r, double t0, double t, double *b1, double *e1);
+// double RHS_cil(double time, double *u, double *F);
+// double RK4(double t, double *ri, double *vi, double *rs, double *vs);
+double RHS_cil(int j, double t0, double time, double *u, double *F, double *Bmod2);
+double RK46_NL(double t0, double t, double *ri, double *vi, double *rs, double *vs, double *Bmod2);
+int integrador(double *t, double *r, double *v, double *rgc, double *vpar, double *mu, int *d);
+void PROC(double t0, int nstepf, double *r, double *v, double *rgc, double *vpar, double *mu, int *d, double *rp, double *vp, double *rgcp, double *vparp, double *mup, double *tp, int *dp);
 
-void cuentaD(double vpmod, double Bmod) {
-  double E, m, q, ta;
-  double Omega, a, B0, frec, R0, Rl;
-  double Gamma, tsim;
+void cuentaD(double vpmod, double vmod2, double Bmod) {
+  double m, q, ta;
+  double Omega, a, B0, Rl;
+  double tsim;
 
   B0 = 2.5; // Tesla
-  R0 = 1.71, // radio mayor en metros
-  E = 70.e3*1.602e-19;    // 8keV Energy
+  // B0 = 2; // Tesla para P40 y 77.
+  //R0 = 1.71, // radio mayor en metros
+  //E = 70.e3*1.602e-19;    // 8keV Energy
   m = 2.0*1.6726e-27;           // D
   q = 1.0*1.6022e-19;          // D
-  Omega = q*B0/m;       // Cyclotronic frequency
-  ta = 1.0439E-8*2/B0;      // Período de Ciclotrón en segundos.
-  frec = 5000; //frecuencia del modo 5kHz
+  Omega = q*B0/m;       // Cyclotronic frequency (en rad/seg)
+  ta = 1.0439E-8*2/B0;     // Período de Ciclotrón en segundos/rad, la inversa de Omega m/q*B0
+  // ta = 1.0/((Omega*180)/3.14159); //Período de Ciclotrón en seg.
+  //frec = 5000; //frecuencia del modo 5kHz
   a = 0.5;              // Minor radius
   Rl = a*gam*vpmod/Bmod; //Radio de Larmor en metros.
   tsim = nstep*dt*ta;
 
   printf("------Datos Varios------\n");
   printf("Gamma = %f\n", gam);
-  printf("Omega = %.2e rad/s\n", Omega);
+  printf("Omega = %.2e rad/s [%.2e Hz]\n", Omega, (Omega*180)/3.14159);
   printf("Radio de Larmor = %0.1f cm\n", Rl*100);
   printf("Tiempo de simulacion  %.2f ms \n",tsim*1000);
   printf("Cuantas vueltas da en un tiempo de simulacion = %.0f\n", tsim/ta);
@@ -112,13 +116,20 @@ void magnetic_field(double *B, double *E, double r, double q, double z, double *
    return;
 }
 
-double centro_giro2(double *r, double *rg, double *v, double t) {
+double centro_giro2(double *r, double *rg, double *v, double *mu, double t0, double t) {
   int i;
-	double vpar, vpmod, rho, Bmod;
+	double vpar, vpmod, rho, Bmod, vmod2;
 	double vp[3];		// Velocidad perpendicular.
 	double e[3];			// Vector unitario perpendicular a v y B.
-	double B[3], E[3], dB[3];
+	double B[3], E[3], dB[3], dE[3];
   double psi[1];
+
+
+
+  for (i=0; i<3; i++) {
+    dB[i] = 0.0;
+    dE[i] = 0.0;
+  }
 
 	rg[0] = r[0];
 	rg[1] = r[1];
@@ -127,10 +138,10 @@ double centro_giro2(double *r, double *rg, double *v, double t) {
   psi[0] = 0.0;
 	magnetic_field(B, E, r[0], r[1], r[2], psi);
 
-  perturbacion(r, t, dB);
+  perturbacion(r, t0, t, dB, dE);
 
   for (i=0; i<3; i++) {
-    B[i]=B[i]+dB[i];
+    B[i] += dB[i];
   }
 
   Bmod = sqrt(B[0]*B[0]+B[1]*B[1]+B[2]*B[2]);
@@ -140,6 +151,14 @@ double centro_giro2(double *r, double *rg, double *v, double t) {
   }
 
   vpar = vp[0]+vp[1]+vp[2]; // Vel paralela.
+
+  // for (i=0; i<3; i++) {
+  //   vpar += v[i]*B[i];
+  // }
+  //
+  // for (i=0; i<3; i++) {
+  //   vp[i] = vpar*B[i]/Bmod;
+  // }
 
 	for(i=0;i<3;i++) {
 		vp[i] = v[i] - vp[i];			// Vel perpendicular
@@ -165,20 +184,23 @@ double centro_giro2(double *r, double *rg, double *v, double t) {
     rg[i] = r[i] + rho*e[i]; //Está con un + porque es v x B en vez de B x v.
   }
 
-  if (t == 0.0) {
-    cuentaD(vpmod, Bmod);
+  if (t == t0) {
+    vmod2 = v[0]*v[0]+v[1]*v[1]+v[2]*v[2];
+    cuentaD(vpmod, vmod2, Bmod);
+    mu[0] = (gam*vpmod*vpmod)/(2.0*Bmod);
   }
-
   return vpar;
 }
 
-void cond_i(double *r, double *v, double *rgc, double *vpar) {
+void cond_i(double *t, double *r, double *v, double *rgc, double *vpar, double *mu) {
   int i;
-  double rr0, rq0, rz0, vr0, vq0, vz0, vper2, Bmod, amu;
+  double rr0, rq0, rz0, vr0, vq0, vz0, t0;
 	double v0[3], r0[3], rg0[3];
 
 	/* ------ Particula Pasante ------ */
-	rr0 = 4.022350;
+  t0 = 0.0;
+
+  rr0 = 4.022350;
 	rq0 = 196.003;
 	rz0 = 0.623175;
 
@@ -187,7 +209,9 @@ void cond_i(double *r, double *v, double *rgc, double *vpar) {
 	vz0 = 0.762512;
 
 	/* ------ Particula Atrapada ------ */
-	// rr0 = 3.41970;
+  // t0 = 0.0;
+  //
+  // rr0 = 3.41970;
 	// rq0 = 21.2890;
 	// rz0 = -0.781325;
   //
@@ -196,7 +220,9 @@ void cond_i(double *r, double *v, double *rgc, double *vpar) {
 	// vz0 = 0.998925;
 
   /* ------ Particula 167 ------ */
-	// rr0 = 4.015180;
+  // t0 = 0.0;
+  //
+  // rr0 = 4.015180;
 	// rq0 = 15.127500;
 	// rz0 = 0.811112;
   //
@@ -205,7 +231,9 @@ void cond_i(double *r, double *v, double *rgc, double *vpar) {
 	// vz0 = 0.574868;
 
   /* ------ Particula 64 ------ */
-	// rr0 = 3.642350;
+  // t0 = 0.0;
+  //
+  // rr0 = 3.642350;
 	// rq0 = 20.581100;
 	// rz0 = 1.178040;
   //
@@ -213,6 +241,29 @@ void cond_i(double *r, double *v, double *rgc, double *vpar) {
 	// vq0 = 0.325686;
 	// vz0 = 0.941076;
 
+  /* ------ Particula 77 ------ */
+  // t0 = 0.0;
+  //
+  // rr0 = 3.70682;
+	// rq0 = 20.0959;
+	// rz0 = 0.914920;
+  //
+	// vr0 = 0.918946;
+	// vq0 = 0.0723818;
+	// vz0 = 0.387400;
+
+  /* ------ Particula 40 ------ */
+  // t0 = 0.0;
+  //
+  // rr0 = 4.04292;
+	// rq0 = 14.5101;
+	// rz0 = 0.630314;
+  //
+	// vr0 = 0.631254;
+	// vq0 = 0.254462;
+	// vz0 = -0.732475;
+
+  t[0] = t0;
 
 	r0[0] = rr0;
 	r0[1] = rq0;
@@ -222,7 +273,7 @@ void cond_i(double *r, double *v, double *rgc, double *vpar) {
 	v0[1] = vq0;
 	v0[2] = vz0;
 
-	vpar[0] = centro_giro2(r0, rg0, v0, 0.0);
+	vpar[0] = centro_giro2(r0, rg0, v0, mu, t0, t0);
 
 
   for (i=0; i<3; i++) {
@@ -234,34 +285,55 @@ void cond_i(double *r, double *v, double *rgc, double *vpar) {
   return;
 }
 
-void perturbacion(double *r, double t, double *b1) {
-  int i, j, ii, jj, kk, cc=0, ci=0;
+void perturbacion(double *r, double t0, double t, double *b1, double *e1) {
+  int i, j, ii, jj, kk, ccb=0, cce=0, cib=0, cie=0;
   static double *b1ra, *b1rb, *b1za, *b1zb;
-  static double e1ra[160801], e1rb[160801], e1qa[160801], e1qb[160801], e1za[160801], e1zb[160801];
+  static double *e1ra, *e1rb, *e1qa, *e1qb, *e1za, *e1zb;
   double rp = r[0]/2.0, zp = r[2]/2.0, pi, qi, up, uq, aux;
 
-  if (t == 0.0) {
+  if (t == t0) {
     FILE *Pert_Campo_Mag = fopen("./CamposMagneticoPerturbado_A6_n401.txt", "r");
     b1ra = (double *)malloc(nr*nr*sizeof(double));
     b1rb = (double *)malloc(nr*nr*sizeof(double));
     b1za = (double *)malloc(nr*nr*sizeof(double));
     b1zb = (double *)malloc(nr*nr*sizeof(double));
 
+    FILE *Pert_Campo_Elec = fopen("./CamposElectricos4.txt", "r");
+    e1ra = (double *)malloc(nr*nr*sizeof(double));
+    e1rb = (double *)malloc(nr*nr*sizeof(double));
+    e1za = (double *)malloc(nr*nr*sizeof(double));
+    e1zb = (double *)malloc(nr*nr*sizeof(double));
+    e1qa = (double *)malloc(nr*nr*sizeof(double));
+    e1qb = (double *)malloc(nr*nr*sizeof(double));
+
     for (i=0; i<nr; i++) {
       for (j=0; j<nr; j++) {
         if(fscanf(Pert_Campo_Mag, "%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n", &aux, &aux, &b1ra[i*nr+j], &b1rb[i*nr+j], &b1za[i*nr+j], &b1zb[i*nr+j]) == 6) {
-          cc++;
+          ccb++;
         }
         else{
-          ci++;
-          printf("No se leyó bien el archivo de perturbación %d veces para la posición %d.\n", ci, i*nr+j);
+          cib++;
+          printf("No se leyó bien el archivo de perturbación %d veces para la posición %d.\n", cib, i*nr+j);
+          break;
+        }
+      }
+    }
+
+    for (i=0; i<nr; i++) {
+      for (j=0; j<nr; j++) {
+        if(fscanf(Pert_Campo_Elec, "%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n", &aux, &aux, &e1ra[i*nr+j], &e1rb[i*nr+j], &e1qa[i*nr+j], &e1qb[i*nr+j], &e1za[i*nr+j], &e1zb[i*nr+j], &aux, &aux) == 10) {
+          cce++;
+        }
+        else{
+          cie++;
+          printf("No se leyó bien el archivo de perturbación %d veces para la posición %d.\n", cie, i*nr+j);
           break;
         }
       }
     }
 
     printf("\n");
-    printf("Se leyeron %d lineas correctamente del archivo de perturbación.\n", cc);
+    printf("Se leyeron %d lineas correctamente del archivo de perturbación Magnética y %d de perturbacion Eléctrica.\n", ccb, cce);
     printf("\n");
 
     for(i=0; i<160801; i++) {
@@ -278,6 +350,37 @@ void perturbacion(double *r, double t, double *b1) {
     }
 
     fclose(Pert_Campo_Mag);
+    fclose(Pert_Campo_Elec);
+
+    if(rp<rp0 || rp>2*rp0 || zp<zp0 || zp>-zp0) {
+        ii = 0;
+        jj = 0;
+        qi = 0.0;
+        pi = 0.0;
+      }
+
+      else {
+        ii = (int)((rp-rp0)/hr);
+        jj = (int)((zp-zp0)/hz);
+        pi = rp/hr - (float)ii - rp0/hr;
+        qi = zp/hz - (float)jj - zp0/hz;
+      }
+
+    double phi = nmode * r[1] - omega * t;
+    double cphi = cos(phi), sphi = sin(phi);
+
+    kk = ii+jj*nr;
+
+    up = 1.0 - pi;
+    uq = 1.0 - qi;
+
+    b1[0] = up*uq*(b1ra[kk]*cphi+b1rb[kk]*sphi) + pi*uq*(b1ra[kk+1]*cphi+b1rb[kk+1]*sphi) + qi*up*(b1ra[kk+nr]*cphi+b1rb[kk+nr]*sphi) + pi*qi*(b1ra[kk+nr+1]*cphi+b1rb[kk+nr+1]*sphi);
+    b1[1] = 0.0;
+    b1[2] = up*uq*(b1za[kk]*cphi+b1zb[kk]*sphi) + pi*uq*(b1za[kk+1]*cphi+b1zb[kk+1]*sphi) + qi*up*(b1za[kk+nr]*cphi+b1zb[kk+nr]*sphi) + pi*qi*(b1za[kk+nr+1]*cphi+b1zb[kk+nr+1]*sphi);
+
+    e1[0] = up*uq*(e1ra[kk]*cphi+e1rb[kk]*sphi) + pi*uq*(e1ra[kk+1]*cphi+e1rb[kk+1]*sphi) + qi*up*(e1ra[kk+nr]*cphi+e1rb[kk+nr]*sphi) + pi*qi*(e1ra[kk+nr+1]*cphi+e1rb[kk+nr+1]*sphi);
+    e1[1] = up*uq*(e1qa[kk]*cphi+e1qb[kk]*sphi) + pi*uq*(e1qa[kk+1]*cphi+e1qb[kk+1]*sphi) + qi*up*(e1qa[kk+nr]*cphi+e1qb[kk+nr]*sphi) + pi*qi*(e1qa[kk+nr+1]*cphi+e1qb[kk+nr+1]*sphi);
+    e1[2] = up*uq*(e1za[kk]*cphi+e1zb[kk]*sphi) + pi*uq*(e1za[kk+1]*cphi+e1zb[kk+1]*sphi) + qi*up*(e1za[kk+nr]*cphi+e1zb[kk+nr]*sphi) + pi*qi*(e1za[kk+nr+1]*cphi+e1zb[kk+nr+1]*sphi);
   }
 
   else {
@@ -296,7 +399,7 @@ void perturbacion(double *r, double t, double *b1) {
         qi = zp/hz - (float)jj - zp0/hz;
       }
 
-    double phi = nmode * r[1] + omega * t;
+    double phi = nmode * r[1] - omega * t;
     double cphi = cos(phi), sphi = sin(phi);
 
     kk = ii+jj*nr;
@@ -307,20 +410,139 @@ void perturbacion(double *r, double t, double *b1) {
     b1[0] = up*uq*(b1ra[kk]*cphi+b1rb[kk]*sphi) + pi*uq*(b1ra[kk+1]*cphi+b1rb[kk+1]*sphi) + qi*up*(b1ra[kk+nr]*cphi+b1rb[kk+nr]*sphi) + pi*qi*(b1ra[kk+nr+1]*cphi+b1rb[kk+nr+1]*sphi);
     b1[1] = 0.0;
     b1[2] = up*uq*(b1za[kk]*cphi+b1zb[kk]*sphi) + pi*uq*(b1za[kk+1]*cphi+b1zb[kk+1]*sphi) + qi*up*(b1za[kk+nr]*cphi+b1zb[kk+nr]*sphi) + pi*qi*(b1za[kk+nr+1]*cphi+b1zb[kk+nr+1]*sphi);
+
+    e1[0] = up*uq*(e1ra[kk]*cphi+e1rb[kk]*sphi) + pi*uq*(e1ra[kk+1]*cphi+e1rb[kk+1]*sphi) + qi*up*(e1ra[kk+nr]*cphi+e1rb[kk+nr]*sphi) + pi*qi*(e1ra[kk+nr+1]*cphi+e1rb[kk+nr+1]*sphi);
+    e1[1] = up*uq*(e1qa[kk]*cphi+e1qb[kk]*sphi) + pi*uq*(e1qa[kk+1]*cphi+e1qb[kk+1]*sphi) + qi*up*(e1qa[kk+nr]*cphi+e1qb[kk+nr]*sphi) + pi*qi*(e1qa[kk+nr+1]*cphi+e1qb[kk+nr+1]*sphi);
+    e1[2] = up*uq*(e1za[kk]*cphi+e1zb[kk]*sphi) + pi*uq*(e1za[kk+1]*cphi+e1zb[kk+1]*sphi) + qi*up*(e1za[kk+nr]*cphi+e1zb[kk+nr]*sphi) + pi*qi*(e1za[kk+nr+1]*cphi+e1zb[kk+nr+1]*sphi);
   }
 
   return;
 }
 
-double RHS_cil(int j, double time, double *u, double *F) {
+// double RHS_cil(double time, double *u, double *F) {
+//   int i;
+//   double Ba[3], dB[3], E[3], r[3];
+//   double s_flux[1], c=1;
+//
+//   for (i=0; i<3; i++) {
+//     Ba[i] = 0.0;
+//     dB[i] = 0.0;
+//     E[i] = 0.0;
+//     r[i] = u[i];
+//   }
+//   s_flux[0] = 0.0;
+//
+//   magnetic_field(Ba, E, u[0], u[1], u[2], s_flux);
+//
+//   if (s_flux[0] < 0.01) {
+//     printf("Partícula perdida.\n");
+//     return c = 0;
+//   }
+//
+//   perturbacion(r, time, dB);
+//
+//   for (i=0; i<3; i++) {
+//     Ba[i] += dB[i];
+//   }
+//
+//   F[0] = gam*u[3];
+//   F[1] = gam*u[4]/u[0];
+//   F[2] = gam*u[5];
+//   F[3] = (gam*u[4]*u[4]/u[0]) + (u[4]*Ba[2]-u[5]*Ba[1]) + E[0]; //No pongo el q_Z, VER!! q_Z = 1.0 en lo de Hugo.
+//   F[4] = -(gam*u[3]*u[4]/u[0]) + (u[5]*Ba[0]-u[3]*Ba[2]) + E[1]; //No pongo el q_Z, VER!!
+//   F[5] = (u[3]*Ba[1]) - (u[4]*Ba[0]) + E[2]; //No pongo el q_Z, VER!!
+//
+// 	return c;
+// }
+//
+// double RK4(double t, double *ri, double *vi, double *rs, double *vs) {
+//   double F[6], k1[6], k2[6], k3[6], k4[6], u[6];  // F=dr;dv-k's-Pos y Vel intermedias.
+//   double cc;
+//   int i;
+//
+//   for(i=0;i<6;i++) { //Valores por defecto para las variables.
+//     F[i] = 0.0;
+//     k1[i] = 0.0;
+//     k2[i] = 0.0;
+//     k3[i] = 0.0;
+//     k4[i] = 0.0;
+//     u[i] = 0.0;
+//   }
+//
+//
+//   //Aplico las formulas para los k's, uno por cada elemento de drdt y dvdt.
+//   //Para k1=h*f(t,u)
+//   for(i=0;i<3;i++) {
+//     u[i] = ri[i];
+//     u[i+3] = vi[i];
+//   }
+//   cc = RHS_cil(t, u, F); //Es muy problable que la i ya no la necesite.
+//   if (!cc) {
+//     return cc;
+//   }
+//   for(i=0;i<6;i++) {
+//     k1[i] = dt*F[i];
+//   }
+//
+//   //Para k2=h*f(t+h/2,u+h*k1/2)
+//   for(i=0;i<3;i++) {
+//     u[i] = ri[i]+(k1[i]*0.5);
+//     u[i+3] = vi[i]+(k1[i+3]*0.5);
+//   }
+//   cc = RHS_cil(t+(dt*0.5), u, F);
+//   if (!cc) {
+//     return cc;
+//   }
+//   for(i=0;i<6;i++) {
+//     k2[i] = dt*F[i];
+//   }
+//
+//   //Para k3=h*f(t+h/2,u+h*k2/2)
+//   for(i=0;i<3;i++) {
+//     u[i] = ri[i]+(k2[i]*0.5);
+//     u[i+3] = vi[i]+(k2[i+3]*0.5);
+//   }
+//   cc = RHS_cil(t+(dt*0.5), u, F);
+//   if (!cc) {
+//     return cc;
+//   }
+//   for(i=0;i<6;i++) {
+//     k3[i] = dt*F[i];
+//   }
+//
+//   //Para k4=h*f(t+h,u+h*k3)
+//   for(i=0;i<3;i++) {
+//     u[i] = ri[i]+k3[i];
+//     u[i+3] = vi[i]+k3[i+3];
+//   }
+//   cc = RHS_cil(t+dt, u, F);
+//   if (!cc) {
+//     return cc;
+//   }
+//   for(i=0;i<6;i++) {
+//     k4[i] = dt*F[i];
+//   }
+//
+//
+//   //Evoluciono el sistema y=y0+1/6 * h * (k1+2*k2+2*k3+k4)
+//   for(i=0;i<3;i++) {
+//     rs[i] = ri[i] + (1.0/6.0)*(k1[i]+2*k2[i]+2*k3[i]+k4[i]);
+//     vs[i] = vi[i] + (1.0/6.0)*(k1[i+3]+2*k2[i+3]+2*k3[i+3]+k4[i+3]);
+//   }
+//
+//   return cc;
+// }
+
+double RHS_cil(int j, double t0, double time, double *u, double *F, double *Bmod2) {
   int i;
-  double Ba[3], dB[3], E[3], r[3];
-  double s_flux[1], c=1;
+  double Ba[3], dB[3], E[3], dE[3], r[3];
+  double s_flux[1], c=1, EB=0.0;
 
   for (i=0; i<3; i++) {
     Ba[i] = 0.0;
     dB[i] = 0.0;
     E[i] = 0.0;
+    dE[i] = 0.0;
     r[i] = u[6*j+i];
   }
   s_flux[0] = 0.0;
@@ -332,28 +554,42 @@ double RHS_cil(int j, double time, double *u, double *F) {
     return c = 0;
   }
 
-  perturbacion(r, time, dB);
+  perturbacion(r, t0, time, dB, dE);
 
   for (i=0; i<3; i++) {
     Ba[i] += dB[i];
   }
 
+  //----Resto la componente paralela de B a E----//
+  Bmod2[0] = (Ba[0]*Ba[0]+Ba[1]*Ba[1]+Ba[2]*Ba[2]);
+
+  EB = (dE[0]*Ba[0]+dE[1]*Ba[1]+dE[2]*Ba[2]);
+
+  E[0] = dE[0] - (EB)*Ba[0]/Bmod2[0];
+  E[1] = dE[1] - (EB)*Ba[1]/Bmod2[0];
+  E[2] = dE[2] - (EB)*Ba[2]/Bmod2[0];
+
+  E[0] /= gam;
+  E[1] /= gam;
+  E[2] /= gam;
+  //---------------------------------------------//
+
   F[0] = gam*u[6*j+3];
   F[1] = gam*u[6*j+4]/u[6*j];
   F[2] = gam*u[6*j+5];
-  F[3] = (gam*u[6*j+4]*u[6*j+4]/u[6*j]) + (u[6*j+4]*Ba[2]-u[6*j+5]*Ba[1]) + E[0]; //No pongo el q_Z, VER!! q_Z = 1.0 en lo de Hugo.
-  F[4] = -(gam*u[6*j+3]*u[6*j+4]/u[6*j]) + (u[6*j+5]*Ba[0]-u[6*j+3]*Ba[2]) + E[1]; //No pongo el q_Z, VER!!
-  F[5] = (u[6*j+3]*Ba[1]) - (u[6*j+4]*Ba[0]) + E[2]; //No pongo el q_Z, VER!!
+  F[3] = (gam*u[6*j+4]*u[6*j+4]/u[6*j]) + (u[6*j+4]*Ba[2]-u[6*j+5]*Ba[1]) + E[0]; //q_Z = 1.0 en lo de Hugo.
+  F[4] = -(gam*u[6*j+3]*u[6*j+4]/u[6*j]) + (u[6*j+5]*Ba[0]-u[6*j+3]*Ba[2]) + E[1]; //q_Z = 1.0 en lo de Hugo.
+  F[5] = (u[6*j+3]*Ba[1]) - (u[6*j+4]*Ba[0]) + E[2]; //q_Z = 1.0 en lo de Hugo.
 
 	return c;
 }
 
-double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
+double RK46_NL(double t0, double t, double *ri, double *vi, double *rs, double *vs, double *Bmod2) {
   double u[42]; 	// velocidades y posiciones
   double w[42]; 	// vel./pos. intermedias
   double F[6];  // dr y dv
   double a[6],b[6],c[6]; // Constantes del método integrador
-  double tw, dvpar, cc;		// tw=tiempo intermedio;
+  double tw, cc;		// tw=tiempo intermedio;
   int i,j;
 
   for(i=0;i<6;i++) {
@@ -383,7 +619,7 @@ double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
   for(i=0;i<6;i++) {
     tw = t + c[i] * dt; //Etapas
 
-    cc = RHS_cil(i, tw, u, F);
+    cc = RHS_cil(i, t0, tw, u, F, Bmod2);
 
     if (!cc) {
       return cc;
@@ -401,15 +637,15 @@ double RK46_NL(double t, double *ri, double *vi, double *rs, double *vs) {
     vs[i] = u[i+39];
   }
 
-  t = t + dt;
+  //t[0] = t[0] + dt;
 
   return cc;
 }
 
-int integrador(double *r, double *v, double *rgc, double *vpar) {
+int integrador(double *t, double *r, double *v, double *rgc, double *vpar, double *mu, int *d) {
   int i, j, c, nstepf;
-  double t;
-  double rs[3], ri[3], vs[3], vi[3], rg[3];
+  double t0=t[0], vper2;
+  double rs[3], ri[3], vs[3], vi[3], rg[3], Bmod2[1];
 
   printf("Integrador con nstep = %d.\n", nstep);
 
@@ -419,10 +655,13 @@ int integrador(double *r, double *v, double *rgc, double *vpar) {
     rg[i] = 0.0;
   }
 
-  for (i=1; i<nstep; i++) {
-    t = i * dt;
+  Bmod2[0] = 0.0;
 
-    c = RK46_NL(t, ri, vi, rs, vs);
+  for (i=1; i<nstep; i++) {
+    t[0] = t0 + i * dt;
+
+    // c = RK4(t, ri, vi, rs, vs);
+    c = RK46_NL(t0, t[0], ri, vi, rs, vs, Bmod2);
 
     if (!c) {
       nstepf = i;
@@ -436,7 +675,16 @@ int integrador(double *r, double *v, double *rgc, double *vpar) {
     v[3*i+1] = vs[1];
     v[3*i+2] = vs[2];
 
-    vpar[i] = centro_giro2(rs, rg, vs, t);
+    vpar[i] = centro_giro2(rs, rg, vs, mu, t0, t[0]);
+
+    //----Calculo amu con Bmod usando vperi---//
+    vper2 = (vs[0]*vs[0]+vs[1]*vs[1]+vs[2]*vs[2])-(vpar[i]*vpar[i]);
+    mu[i] = (gam*vper2)/(2.0*sqrt(Bmod2[0]));
+
+    if (vpar[i-1]*vpar[i] < 0.0) {
+      d[i] = 1;
+    }
+
     for (j=0; j<3; j++) {
       rgc[3*i+j] = rg[j];
     }
@@ -451,7 +699,7 @@ int integrador(double *r, double *v, double *rgc, double *vpar) {
   return nstep;
 }
 
-void PROC(int nstepf, double *r, double *v, double *rgc, double *vpar, double *rp, double *vp, double *rgcp, double *vparp, double *tp) {
+void PROC(double t0, int nstepf, double *r, double *v,double *rgc, double *vpar,  double *mu, int *d, double *rp, double *vp, double *rgcp, double *vparp, double *mup, double *tp, int *dp) {
   int i,j,k,jstep=((float)nstep)/((float)nprint);
   j = 0;
 
@@ -460,7 +708,7 @@ void PROC(int nstepf, double *r, double *v, double *rgc, double *vpar, double *r
   for (i=0; i<nstepf; i++) {
     k = i%jstep;
     if (k == 0) {
-      tp[j] = i*dt;
+      tp[j] = t0 + i*dt;
       rp[3*j] = r[3*i];
       rp[3*j+1] = r[3*i+1];
       rp[3*j+2] = r[3*i+2];
@@ -471,7 +719,15 @@ void PROC(int nstepf, double *r, double *v, double *rgc, double *vpar, double *r
       rgcp[3*j+1] = *(rgc+3*i+1);
       rgcp[3*j+2] = rgc[3*i+2];
       vparp[j] = vpar[i];
-      j = j + 1;
+      mup[j] = mu[i];
+      j += 1;
     }
   }
+
+  for (i=0; i<(int)(nstepf/jstep); i++) {
+    if (vparp[i+1]*vparp[i]<0.0) {
+      dp[i+1] = 1;
+    }
+  }
+
 }
